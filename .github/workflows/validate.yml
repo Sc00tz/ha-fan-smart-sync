@@ -21,8 +21,7 @@ jobs:
         with:
           category: integration
           # Brand icons live in home-assistant/brands and topics are set on GitHub; neither blocks use.
-          # "license" is skipped until the repo has one.
-          ignore: brands topics license
+          ignore: brands topics
 
   tests:
     runs-on: ubuntu-latest
