@@ -1,0 +1,36 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Choose a fan",
+        "description": "Fans found over Bluetooth. Close the Fan Smart Sync phone app first, because the fan only accepts one connection at a time.",
+        "data": {
+          "address": "Fan",
+          "name": "Name"
+        }
+      },
+      "confirm": {
+        "title": "Add this fan?",
+        "description": "Found {name}. Close the Fan Smart Sync phone app first, because the fan only accepts one connection at a time.",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Couldn't read the fan. Close the phone app, check that the fan has power, and try again."
+    },
+    "abort": {
+      "already_configured": "This fan is already set up.",
+      "no_devices_found": "No fans found over Bluetooth. Check that the fan has power and is in range of Home Assistant's Bluetooth adapter or a Bluetooth proxy."
+    }
+  },
+  "entity": {
+    "light": {
+      "light": {
+        "name": "Light"
+      }
+    }
+  }
+}

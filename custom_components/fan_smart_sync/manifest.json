@@ -1,0 +1,19 @@
+{
+  "domain": "fan_smart_sync",
+  "name": "Fan Smart Sync",
+  "bluetooth": [
+    {
+      "service_uuid": "539c6813-61a0-2137-4f79-bf1a11984790",
+      "connectable": true
+    }
+  ],
+  "codeowners": ["@Sc00tz"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/Sc00tz/ha-fan-smart-sync",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Sc00tz/ha-fan-smart-sync/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
