@@ -17,6 +17,13 @@ _LOGGER = logging.getLogger(__name__)
 REPLY_TIMEOUT = 5.0
 # The fan takes one connection at a time. Letting go when idle leaves room for the phone app.
 IDLE_DISCONNECT = 15.0
+# Upper bound for one connect-and-read attempt. Each operation makes at most two attempts.
+ATTEMPT_TIMEOUT = 30.0
+
+
+def _describe(err: BaseException) -> str:
+    text = str(err).strip()
+    return f"{type(err).__name__}: {text}" if text else type(err).__name__
 
 
 class FanError(Exception):
@@ -31,6 +38,7 @@ class FanSmartSyncDevice:
         self._reply: asyncio.Future[tuple[int, bytes]] | None = None
         self._idle: asyncio.TimerHandle | None = None
         self.status: Status | None = None
+        self._stage = "connecting"
 
     @property
     def address(self) -> str:
@@ -58,23 +66,31 @@ class FanSmartSyncDevice:
     async def _run(self, command: bytes | None) -> Status:
         async with self._lock:
             for attempt in (1, 2):
+                self._stage = "connecting"
                 try:
-                    await self._connect()
-                    if command is not None:
-                        kind, _ = await self._request(command)
-                        if kind != protocol.KIND_ACK:
-                            _LOGGER.debug("%s: command answered with %02x", self.address, kind)
-                    kind, body = await self._request(protocol.status_request())
-                    if kind != protocol.KIND_STATUS:
-                        raise FanError(f"unexpected reply {kind:02x} to a status request")
+                    # One cap for the whole attempt, so a fan that never answers can't stall Home Assistant.
+                    async with asyncio.timeout(ATTEMPT_TIMEOUT):
+                        await self._connect()
+                        if command is not None:
+                            self._stage = "sending the command"
+                            kind, _ = await self._request(command)
+                            if kind != protocol.KIND_ACK:
+                                _LOGGER.debug("%s: command answered with %02x", self.address, kind)
+                        self._stage = "reading status"
+                        kind, body = await self._request(protocol.status_request())
+                        if kind != protocol.KIND_STATUS:
+                            raise FanError(f"unexpected reply {kind:02x} to a status request")
                     self.status = protocol.parse_status(body)
                     self._schedule_idle()
                     return self.status
                 except (BleakError, TimeoutError, protocol.FrameError, FanError) as err:
                     await self._disconnect()
+                    reason = _describe(err)
+                    if isinstance(err, TimeoutError):
+                        reason = f"no answer within {ATTEMPT_TIMEOUT:.0f} s"
                     if attempt == 2:
-                        raise FanError(f"{self.address}: {err or type(err).__name__}") from err
-                    _LOGGER.debug("%s: retrying after %r", self.address, err)
+                        raise FanError(f"{reason} while {self._stage}") from err
+                    _LOGGER.debug("%s: attempt 1 failed while %s (%s), retrying", self.address, self._stage, reason)
         raise AssertionError("unreachable")
 
     async def _connect(self) -> None:
@@ -85,9 +101,11 @@ class FanSmartSyncDevice:
             BleakClientWithServiceCache,
             self._ble_device,
             self._ble_device.name or self.address,
+            max_attempts=2,
             disconnected_callback=self._on_disconnect,
             ble_device_callback=lambda: self._ble_device,
         )
+        self._stage = "subscribing to replies"
         try:
             await client.start_notify(protocol.NOTIFY_UUID, self._on_notify)
         except BaseException:
@@ -100,8 +118,11 @@ class FanSmartSyncDevice:
         self._reply = asyncio.get_running_loop().create_future()
         try:
             await self._client.write_gatt_char(protocol.WRITE_UUID, data, response=True)
-            async with asyncio.timeout(REPLY_TIMEOUT):
-                return await self._reply
+            try:
+                async with asyncio.timeout(REPLY_TIMEOUT):
+                    return await self._reply
+            except TimeoutError:
+                raise FanError(f"no reply within {REPLY_TIMEOUT:.0f} s") from None
         finally:
             self._reply = None
 

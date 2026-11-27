@@ -111,7 +111,7 @@ async def test_light_commands(hass: HomeAssistant, bluetooth_ok, fake_fans) -> N
     assert hass.states.get(LIGHT).state == STATE_OFF
 
 
-async def test_unavailable_when_fan_stops_answering(hass: HomeAssistant, bluetooth_ok, fake_fans) -> None:
+async def test_unavailable_when_fan_stops_answering(hass: HomeAssistant, bluetooth_ok, fake_fans, caplog) -> None:
     await setup_entry(hass)
     fake_fans[0].fail = True
     from homeassistant.util import dt as dt_util
@@ -119,6 +119,9 @@ async def test_unavailable_when_fan_stops_answering(hass: HomeAssistant, bluetoo
     async_fire_time_changed(hass, dt_util.utcnow() + POLL_INTERVAL)
     await hass.async_block_till_done()
     assert hass.states.get(FAN).state == STATE_UNAVAILABLE
+    # The log says why, including what Home Assistant last heard over Bluetooth.
+    assert "Couldn't read the fan: no answer" in caplog.text
+    assert "hasn't heard the fan advertise recently" in caplog.text
 
     fake_fans[0].fail = False
     async_fire_time_changed(hass, dt_util.utcnow() + POLL_INTERVAL * 2)
