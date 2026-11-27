@@ -129,6 +129,21 @@ async def test_unavailable_when_fan_stops_answering(hass: HomeAssistant, bluetoo
     assert hass.states.get(FAN).state == STATE_OFF
 
 
+async def test_setup_failure_is_logged(hass: HomeAssistant, bluetooth_ok, fake_fans, caplog) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=ADDRESS, title="Bedroom fan", data={CONF_ADDRESS: ADDRESS})
+    entry.add_to_hass(hass)
+    import conftest
+    from custom_components.fan_smart_sync.device import FanError
+
+    failing = AsyncMock(side_effect=FanError("no answer within 30 s while connecting"))
+    with patch.object(conftest.FakeFan, "update", failing):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    warnings = [r for r in caplog.records if r.levelname == "WARNING" and "fan_smart_sync" in r.name]
+    assert any("Couldn't read the fan: no answer within 30 s while connecting" in r.getMessage() for r in warnings)
+
+
 async def test_bluetooth_discovery_flow(hass: HomeAssistant, bluetooth_ok, fake_fans) -> None:
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=bluetooth_ok)
     assert result["type"] is FlowResultType.FORM

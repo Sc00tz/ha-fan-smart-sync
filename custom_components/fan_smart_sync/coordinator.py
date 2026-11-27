@@ -32,7 +32,12 @@ class FanSmartSyncCoordinator(DataUpdateCoordinator[Status]):
         try:
             return await self.device.update()
         except FanError as err:
-            raise UpdateFailed(f"Couldn't read the fan: {err} ({self.radio_context()})") from err
+            message = f"Couldn't read the fan: {err} ({self.radio_context()})"
+            if self.data is None:
+                # Home Assistant only logs polling failures after setup. Log setup failures too,
+                # so a fan that never comes up still leaves a reason in the log.
+                _LOGGER.warning("%s: %s. Home Assistant will keep retrying.", self.device.address, message)
+            raise UpdateFailed(message) from err
 
     async def run(self, operation: Awaitable[Status]) -> None:
         """Send a command, then share the status the fan reports afterwards."""
